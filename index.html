@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Drawing Testing</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            background-color: #ddd;
+            cursor: pointer;
+            border-radius: 5px 5px 0 0;
+            margin-right: 5px;
+        }
+        .tab.active {
+            background-color: #fff;
+            border-bottom: 2px solid #4CAF50;
+        }
+        .content {
+            display: none;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 0 5px 5px 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .content.active {
+            display: block;
+        }
+        canvas {
+            border: 1px solid #000;
+            display: block;
+            margin: 10px 0;
+            cursor: crosshair;
+        }
+        .tools {
+            margin: 10px 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .color-picker {
+            width: 40px;
+            height: 40px;
+            cursor: pointer;
+        }
+        .size-slider {
+            width: 100px;
+            margin: 0 10px;
+        }
+        .tool-btn {
+            padding: 8px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .tool-btn:hover {
+            background-color: #45a049;
+        }
+        .qr-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 20px 0;
+        }
+        .status {
+            padding: 10px;
+            text-align: center;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .status.connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .hidden {
+            display: none;
+        }
+        @media (max-width: 768px) {
+            canvas {
+                width: 100%;
+                height: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Collaborative Drawing App</h1>
+        
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('pc')">Computer</div>
+            <div class="tab" onclick="switchTab('mobile')">Mobile</div>
+        </div>
+        
+        <div id="pc-content" class="content active">
+            <div class="tools">
+                <input type="color" id="pc-color-picker" class="color-picker" value="#000000">
+                <label for="pc-size-slider">Brush Size:</label>
+                <input type="range" id="pc-size-slider" class="size-slider" min="1" max="20" value="5">
+                <button id="pc-clear-btn" class="tool-btn">Clear Canvas</button>
+            </div>
+            
+            <canvas id="pc-canvas" width="800" height="500"></canvas>
+            
+            <div class="qr-container">
+                <h3>Scan QR Code to connect your mobile</h3>
+                <div id="qrcode"></div>
+                <p>Session ID: <span id="session-id"></span></p>
+            </div>
+            
+            <div id="pc-status" class="status">Waiting for connection...</div>
+        </div>
+        
+        <div id="mobile-content" class="content">
+            <div class="tools">
+                <input type="color" id="mobile-color-picker" class="color-picker" value="#000000">
+                <label for="mobile-size-slider">Brush Size:</label>
+                <input type="range" id="mobile-size-slider" class="size-slider" min="1" max="20" value="5">
+                <button id="mobile-clear-btn" class="tool-btn">Clear Canvas</button>
+            </div>
+            
+            <canvas id="mobile-canvas" width="800" height="500"></canvas>
+            
+            <div id="scanner-container">
+                <h3>Scan QR Code from PC</h3>
+                <input type="text" id="session-input" placeholder="Or enter session ID manually">
+                <button id="connect-btn" class="tool-btn">Connect</button>
+            </div>
+            
+            <div id="mobile-status" class="status">Not connected</div>
+        </div>
+    </div>
+
+    <script>
+        // Utility functions
+        function generateSessionId() {
+            return Math.random().toString(36).substring(2, 10);
+        }
+        
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.content').forEach(content => content.classList.remove('active'));
+            
+            const tabElement = document.querySelector(`.tab:nth-child(${tabName === 'pc' ? 1 : 2})`);
+            const contentElement = document.getElementById(`${tabName}-content`);
+            
+            tabElement.classList.add('active');
+            contentElement.classList.add('active');
+        }
+        
+        // Drawing functionality
+        class DrawingApp {
+            constructor(canvasId, colorPickerId, sizeId, clearBtnId) {
+                this.canvas = document.getElementById(canvasId);
+                this.ctx = this.canvas.getContext('2d');
+                this.colorPicker = document.getElementById(colorPickerId);
+                this.sizeSlider = document.getElementById(sizeId);
+                this.clearBtn = document.getElementById(clearBtnId);
+                
+                this.isDrawing = false;
+                this.lastX = 0;
+                this.lastY = 0;
+                
+                this.setupEventListeners();
+                this.initCanvas();
+            }
+            
+            initCanvas() {
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                this.ctx.lineCap = 'round';
+                this.ctx.lineJoin = 'round';
+            }
+            
+            setupEventListeners() {
+                // Mouse events
+                this.canvas.addEventListener('mousedown', this.startDrawing.bind(this));
+                this.canvas.addEventListener('mousemove', this.draw.bind(this));
+                this.canvas.addEventListener('mouseup', this.stopDrawing.bind(this));
+                this.canvas.addEventListener('mouseout', this.stopDrawing.bind(this));
+                
+                // Touch events
+                this.canvas.addEventListener('touchstart', this.handleTouch.bind(this));
+                this.canvas.addEventListener('touchmove', this.handleTouch.bind(this));
+                this.canvas.addEventListener('touchend', () => this.isDrawing = false);
+                
+                // Button events
+                this.clearBtn.addEventListener('click', this.clearCanvas.bind(this));
+            }
+            
+            startDrawing(e) {
+                this.isDrawing = true;
+                [this.lastX, this.lastY] = [e.offsetX, e.offsetY];
+            }
+            
+            draw(e) {
+                if (!this.isDrawing) return;
+                
+                this.ctx.strokeStyle = this.colorPicker.value;
+                this.ctx.lineWidth = this.sizeSlider.value;
+                
+                this.ctx.beginPath();
+                this.ctx.moveTo(this.lastX, this.lastY);
+                this.ctx.lineTo(e.offsetX, e.offsetY);
+                this.ctx.stroke();
+                
+                [this.lastX, this.lastY] = [e.offsetX, e.offsetY];
+                
+                if (this.onDraw) {
+                    this.onDraw({
+                        x1: this.lastX,
+                        y1: this.lastY,
+                        x2: e.offsetX,
+                        y2: e.offsetY,
+                        color: this.colorPicker.value,
+                        size: this.sizeSlider.value
+                    });
+                }
+            }
+            
+            handleTouch(e) {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const rect = this.canvas.getBoundingClientRect();
+                const offsetX = touch.clientX - rect.left;
+                const offsetY = touch.clientY - rect.top;
+                
+                if (e.type === 'touchstart') {
+                    this.isDrawing = true;
+                    [this.lastX, this.lastY] = [offsetX, offsetY];
+                } else if (e.type === 'touchmove' && this.isDrawing) {
+                    this.ctx.strokeStyle = this.colorPicker.value;
+                    this.ctx.lineWidth = this.sizeSlider.value;
+                    
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(this.lastX, this.lastY);
+                    this.ctx.lineTo(offsetX, offsetY);
+                    this.ctx.stroke();
+                    
+                    if (this.onDraw) {
+                        this.onDraw({
+                            x1: this.lastX,
+                            y1: this.lastY,
+                            x2: offsetX,
+                            y2: offsetY,
+                            color: this.colorPicker.value,
+                            size: this.sizeSlider.value
+                        });
+                    }
+                    
+                    [this.lastX, this.lastY] = [offsetX, offsetY];
+                }
+            }
+            
+            stopDrawing() {
+                this.isDrawing = false;
+            }
+            
+            clearCanvas() {
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                if (this.onClear) {
+                    this.onClear();
+                }
+            }
+            
+            drawLine(data) {
+                this.ctx.strokeStyle = data.color;
+                this.ctx.lineWidth = data.size;
+                
+                this.ctx.beginPath();
+                this.ctx.moveTo(data.x1, data.y1);
+                this.ctx.lineTo(data.x2, data.y2);
+                this.ctx.stroke();
+            }
+            
+            getImageData() {
+                return this.canvas.toDataURL('image/png');
+            }
+            
+            loadImageData(dataUrl) {
+                const img = new Image();
+                img.onload = () => {
+                    this.ctx.drawImage(img, 0, 0);
+                };
+                img.src = dataUrl;
+            }
+        }
+        
+        // Initialize apps
+        const pcApp = new DrawingApp('pc-canvas', 'pc-color-picker', 'pc-size-slider', 'pc-clear-btn');
+        const mobileApp = new DrawingApp('mobile-canvas', 'mobile-color-picker', 'mobile-size-slider', 'mobile-clear-btn');
+        
+        // Session management
+        const sessionId = generateSessionId();
+        document.getElementById('session-id').textContent = sessionId;
+        
+        // QR Code generation (simulation)
+        const qrcode = new QRCode(document.getElementById("qrcode"), {
+            text: `${window.location.href}?session=${sessionId}`,
+            width: 128,
+            height: 128,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.H
+        });
+        
+        // Simulate socket connection
+        let isConnected = false;
+        const pcStatus = document.getElementById('pc-status');
+        const mobileStatus = document.getElementById('mobile-status');
+        
+        // Connect button functionality
+        document.getElementById('connect-btn').addEventListener('click', () => {
+            const enteredId = document.getElementById('session-input').value || sessionId;
+            simulateConnection(enteredId);
+        });
+        
+        function simulateConnection(id) {
+            if (id === sessionId) {
+                isConnected = true;
+                pcStatus.textContent = "Mobile connected!";
+                pcStatus.className = "status connected";
+                mobileStatus.textContent = "Connected to PC!";
+                mobileStatus.className = "status connected";
+                
+                // Share current canvas state
+                mobileApp.loadImageData(pcApp.getImageData());
+                
+                // Set up synchronization
+                setupSync();
+            } else {
+                mobileStatus.textContent = "Invalid session ID";
+                mobileStatus.className = "status disconnected";
+            }
+        }
+        
+        function setupSync() {
+            pcApp.onDraw = (data) => {
+                if (isConnected) {
+                    mobileApp.drawLine(data);
+                }
+            };
+            
+            mobileApp.onDraw = (data) => {
+                if (isConnected) {
+                    pcApp.drawLine(data);
+                }
+            };
+            
+            pcApp.onClear = () => {
+                if (isConnected) {
+                    mobileApp.clearCanvas();
+                }
+            };
+            
+            mobileApp.onClear = () => {
+                if (isConnected) {
+                    pcApp.clearCanvas();
+                }
+            };
+            
+            // Simulate random disconnection after some time
+            setTimeout(() => {
+                if (Math.random() > 0.5) {
+                    disconnectApps();
+                }
+            }, 60000 + Math.random() * 60000);
+        }
+        
+        function disconnectApps() {
+            isConnected = false;
+            pcStatus.textContent = "Connection lost!";
+            pcStatus.className = "status disconnected";
+            mobileStatus.textContent = "Connection lost!";
+            mobileStatus.className = "status disconnected";
+            
+            pcApp.onDraw = null;
+            pcApp.onClear = null;
+            mobileApp.onDraw = null;
+            mobileApp.onClear = null;
+        }
+        
+        // Check URL for session parameter (for mobile connection)
+        window.addEventListener('load', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlSession = urlParams.get('session');
+            
+            if (urlSession) {
+                switchTab('mobile');
+                document.getElementById('session-input').value = urlSession;
+            }
+        });
+    </script>
+</body>
+</html>
