@@ -7,1200 +7,589 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.4.7/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
+        :root {
+            --primary: #4361ee;
+            --primary-light: #4895ef;
+            --secondary: #3f37c9;
+            --success: #4cc9f0;
+            --danger: #f72585;
+            --warning: #f8961e;
+            --dark: #212529;
+            --light: #f8f9fa;
+            --gray: #6c757d;
+            --border-radius: 8px;
+        }
+        
+        * {
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            color: var(--dark);
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        .app-container {
             display: flex;
             flex-direction: column;
             height: 100vh;
-            background-color: #f5f5f5;
-        }
-        .container {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            padding: 20px;
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
-            width: 100%;
-            box-sizing: border-box;
+            padding: 0;
         }
-        .header {
-            text-align: center;
-            margin-bottom: 20px;
+        
+        header {
+            background-color: var(--primary);
+            color: white;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 10;
         }
+        
+        .app-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9rem;
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #ccc;
+        }
+        
+        .status-dot.connected {
+            background-color: #4cc9f0;
+        }
+        
         .main-content {
             display: flex;
             flex: 1;
-            gap: 20px;
+            overflow: hidden;
         }
-        .canvas-container {
+        
+        .canvas-area {
             flex: 1;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
+            background-color: white;
             position: relative;
         }
-        .user-panel {
-            width: 250px;
-            background-color: white;
-            border-radius: 8px;
-            padding: 15px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        
+        .toolbar {
             display: flex;
-            flex-direction: column;
-        }
-        canvas {
-            border: 2px solid #333;
-            background-color: white;
-            touch-action: none;
-            width: 100%;
-            flex: 1;
-            position: relative;
-        }
-        .controls {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin: 10px 0;
+            background-color: var(--light);
+            padding: 10px 20px;
+            gap: 15px;
+            border-bottom: 1px solid #ddd;
+            align-items: center;
             flex-wrap: wrap;
         }
-        button {
-            padding: 10px 15px;
-            background-color: #4CAF50;
+        
+        .tool-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .canvas-wrapper {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        canvas {
+            background-color: white;
+            touch-action: none;
+            cursor: crosshair;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .sidebar {
+            width: 280px;
+            background-color: white;
+            border-left: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s ease;
+            overflow: hidden;
+        }
+        
+        .sidebar-header {
+            padding: 15px;
+            background-color: var(--light);
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .user-list {
+            list-style: none;
+            overflow-y: auto;
+            padding: 10px;
+            flex: 1;
+        }
+        
+        .user-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            border-radius: var(--border-radius);
+            margin-bottom: 5px;
+            background-color: #f8f9fa;
+        }
+        
+        .user-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 10px;
+            border: 2px solid white;
+            box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
+        }
+        
+        .user-name {
+            flex: 1;
+            font-weight: 500;
+        }
+        
+        .user-badge {
+            font-size: 0.7rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            margin-left: 5px;
+        }
+        
+        .badge-host {
+            background-color: var(--warning);
             color: white;
+        }
+        
+        .badge-admin {
+            background-color: var(--primary);
+            color: white;
+        }
+        
+        .badge-viewer {
+            background-color: var(--gray);
+            color: white;
+        }
+        
+        .user-controls {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border-radius: var(--border-radius);
             border: none;
-            border-radius: 4px;
+            font-weight: 500;
             cursor: pointer;
-            font-size: 16px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
         }
-        button:hover {
-            background-color: #45a049;
+        
+        .btn-sm {
+            padding: 4px 8px;
+            font-size: 0.8rem;
         }
-        button:disabled {
-            background-color: #cccccc;
-            cursor: not-allowed;
+        
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
         }
+        
+        .btn-primary:hover {
+            background-color: var(--primary-light);
+        }
+        
+        .btn-secondary {
+            background-color: var(--secondary);
+            color: white;
+        }
+        
+        .btn-success {
+            background-color: var(--success);
+            color: white;
+        }
+        
+        .btn-danger {
+            background-color: var(--danger);
+            color: white;
+        }
+        
+        .btn-outline {
+            background-color: transparent;
+            border: 1px solid var(--primary);
+            color: var(--primary);
+        }
+        
+        .btn-outline:hover {
+            background-color: var(--primary);
+            color: white;
+        }
+        
+        .btn-icon {
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+        
         input[type="color"] {
             width: 40px;
             height: 40px;
             border: none;
-            padding: 0;
+            border-radius: 50%;
+            overflow: hidden;
             cursor: pointer;
         }
+        
         input[type="range"] {
             width: 100px;
+            accent-color: var(--primary);
         }
-        .size-display {
-            width: 40px;
-            text-align: center;
-        }
-        .qr-container {
-            margin-top: 20px;
-            display: none;
-            flex-direction: column;
-            align-items: center;
-        }
-        #qrcode {
-            margin: 10px 0;
-        }
-        .connection-info {
-            margin: 10px 0;
-            padding: 10px;
-            background-color: #e7f3fe;
-            border-left: 6px solid #2196F3;
-            max-width: 100%;
-            word-break: break-all;
-        }
-        .connect-container {
+        
+        .session-controls {
             display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin-top: 20px;
-        }
-        #session-id-input, #username-input {
-            padding: 10px;
-            margin: 10px 0;
-            width: 80%;
-            max-width: 300px;
-        }
-        #status-message {
-            color: #2196F3;
-            font-weight: bold;
-            text-align: center;
-            margin: 10px 0;
-        }
-        #notification {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: #f44336;
-            color: white;
-            padding: 15px 20px;
-            border-radius: 4px;
-            z-index: 1000;
-            display: none;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-        }
-        #scanner-container {
-            display: none;
-            margin-top: 20px;
-            width: 100%;
-            max-width: 300px;
-        }
-        #qr-video {
-            width: 100%;
-            max-width: 300px;
-            border: 1px solid #ccc;
-        }
-        .username-container {
-            display: flex;
-            flex-direction: column;
+            padding: 15px;
+            background-color: var(--light);
+            border-top: 1px solid #ddd;
+            gap: 10px;
+            flex-wrap: wrap;
             justify-content: center;
-            align-items: center;
+        }
+        
+        .modal-overlay {
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
             bottom: 0;
-            background-color: rgba(0,0,0,0.85);
-            z-index: 1000;
-        }
-        .username-box {
-            background-color: white;
-            padding: 30px;
-            border-radius: 8px;
-            max-width: 400px;
-            width: 90%;
-            text-align: center;
-        }
-        .user-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-            overflow-y: auto;
-            flex: 1;
-        }
-        .user-item {
+            background-color: rgba(0,0,0,0.7);
             display: flex;
             align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid #eee;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
         }
-        .user-color {
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            margin-right: 8px;
+        
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
         }
-        .user-name {
-            flex: 1;
+        
+        .modal-content {
+            background-color: white;
+            border-radius: var(--border-radius);
+            padding: 20px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            transform: translateY(20px);
+            transition: transform 0.3s ease;
         }
-        .user-role {
-            margin-right: 8px;
-            font-size: 12px;
-            padding: 2px 6px;
-            border-radius: 10px;
-            background-color: #eee;
+        
+        .modal-overlay.active .modal-content {
+            transform: translateY(0);
         }
-        .role-host {
-            background-color: #ff9800;
-            color: white;
+        
+        .modal-header {
+            margin-bottom: 15px;
+            text-align: center;
         }
-        .role-admin {
-            background-color: #2196F3;
-            color: white;
+        
+        .modal-body {
+            margin-bottom: 20px;
         }
-        .role-demo {
-            background-color: #9e9e9e;
-            color: white;
-        }
-        .user-actions {
+        
+        .modal-footer {
             display: flex;
-            gap: 5px;
+            justify-content: flex-end;
+            gap: 10px;
         }
-        .admin-btn {
-            background-color: #2196F3;
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: var(--border-radius);
+            font-size: 1rem;
+        }
+        
+        .qr-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 20px 0;
+        }
+        
+        #qrcode {
+            margin: 15px 0;
+            padding: 15px;
+            background-color: white;
+            border-radius: var(--border-radius);
+        }
+        
+        .session-id {
+            font-family: monospace;
+            padding: 10px;
+            background-color: #f0f2f5;
+            border-radius: var(--border-radius);
+            text-align: center;
+            margin: 10px 0;
+            word-break: break-all;
+            font-size: 0.9rem;
+        }
+        
+        .notification {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: var(--dark);
             color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 2px 8px;
-            font-size: 12px;
-            cursor: pointer;
+            padding: 15px 20px;
+            border-radius: var(--border-radius);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            z-index: 100;
+            transform: translateX(120%);
+            transition: transform 0.3s ease;
         }
-        .demo-btn {
-            background-color: #9e9e9e;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 2px 8px;
-            font-size: 12px;
-            cursor: pointer;
+        
+        .notification.show {
+            transform: translateX(0);
         }
-        .kick-btn {
-            background-color: #f44336;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 2px 8px;
-            font-size: 12px;
-            cursor: pointer;
-        }
+        
         .cursor {
             position: absolute;
-            width: 16px;
-            height: 16px;
+            width: 10px;
+            height: 10px;
             border-radius: 50%;
-            z-index: 10;
             pointer-events: none;
+            z-index: 50;
+            transform: translate(-50%, -50%);
         }
+        
         .cursor::after {
             content: attr(data-name);
             position: absolute;
-            left: 12px;
-            top: -18px;
+            left: 10px;
+            top: -20px;
             background-color: rgba(0,0,0,0.7);
             color: white;
-            padding: 2px 8px;
-            border-radius: 4px;
+            padding: 3px 8px;
+            border-radius: 3px;
             font-size: 12px;
             white-space: nowrap;
         }
+        
+        /* Mobile-specific styles */
+        .mobile-controls {
+            display: none;
+        }
+        
         @media (max-width: 768px) {
-            .main-content {
-                flex-direction: column;
+            .app-container {
+                height: 100%;
             }
-            .user-panel {
-                width: 100%;
-                max-height: 200px;
-                order: -1;
+            
+            .sidebar {
+                position: fixed;
+                right: 0;
+                top: 0;
+                bottom: 0;
+                z-index: 100;
+                transform: translateX(100%);
+                box-shadow: -5px 0 15px rgba(0,0,0,0.1);
             }
-            .controls {
-                flex-direction: column;
-                align-items: center;
+            
+            .sidebar.active {
+                transform: translateX(0);
             }
-            .size-control {
-                width: 100%;
+            
+            .toolbar {
+                display: none;
+            }
+            
+            .mobile-controls {
+                display: flex;
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                background-color: rgba(255,255,255,0.9);
+                padding: 10px;
+                border-top: 1px solid #ddd;
+                z-index: 50;
+                justify-content: center;
+                gap: 15px;
+            }
+            
+            .toggle-sidebar {
+                position: fixed;
+                top: 15px;
+                right: 15px;
+                z-index: 20;
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                background-color: white;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                gap: 10px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            }
+            
+            .canvas-area {
+                padding-bottom: 70px; /* Space for mobile controls */
             }
         }
     </style>
 </head>
 <body>
-    <div id="notification"></div>
+    <div class="notification" id="notification"></div>
     
-    <div id="username-container" class="username-container">
-        <div class="username-box">
-            <h2>Welcome to Collaborative Drawing</h2>
-            <p>Please enter your name to continue</p>
-            <input type="text" id="username-input" placeholder="Your name" maxlength="20">
-            <button id="username-submit">Continue</button>
+    <!-- Join Session Modal -->
+    <div class="modal-overlay" id="join-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Join Drawing Session</h3>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label" for="session-id-input">Session ID</label>
+                    <input type="text" id="session-id-input" class="form-control" placeholder="Paste session ID here">
+                </div>
+                <div class="form-group">
+                    <button id="scan-qr-btn" class="btn btn-secondary" style="width: 100%;">Scan QR Code</button>
+                </div>
+                <div id="scanner-container" style="display:none; margin-top: 15px;">
+                    <video id="qr-video" style="width: 100%; border-radius: var(--border-radius);" autoplay playsinline></video>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="join-cancel-btn" class="btn btn-outline">Cancel</button>
+                <button id="join-btn" class="btn btn-primary">Join</button>
+            </div>
         </div>
     </div>
     
-    <div class="container">
-        <div class="header">
-            <h1>Collaborative Drawing App</h1>
-            <div id="status-message">Initializing...</div>
+    <!-- Host Session Modal -->
+    <div class="modal-overlay" id="host-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Host Drawing Session</h3>
+            </div>
+            <div class="modal-body">
+                <p>Share this session ID or QR code with others to join your drawing session:</p>
+                <div class="qr-container">
+                    <div id="qrcode"></div>
+                    <div class="session-id" id="session-id-display">Loading...</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="copy-session-id" class="btn btn-outline">Copy ID</button>
+                <button id="close-host-modal" class="btn btn-primary">Done</button>
+            </div>
         </div>
+    </div>
+    
+    <div class="app-container">
+        <header>
+            <div class="app-title">Drawing Together</div>
+            <div class="status-bar">
+                <span class="status-dot" id="status-dot"></span>
+                <span id="status-text">Initializing...</span>
+            </div>
+        </header>
         
         <div class="main-content">
-            <div class="canvas-container">
-                <div class="controls">
-                    <input type="color" id="color-picker" value="#000000">
-                    <div class="size-control">
+            <div class="canvas-area">
+                <div class="toolbar" id="toolbar">
+                    <div class="tool-group">
+                        <input type="color" id="color-picker" value="#000000">
                         <input type="range" id="brush-size" min="1" max="50" value="5">
-                        <span id="size-display" class="size-display">5</span>
+                        <span id="size-display">5px</span>
                     </div>
-                    <button id="clear-btn">Clear</button>
-                    <button id="host-btn" disabled>Host Session</button>
-                    <button id="connect-btn" disabled>Connect</button>
-                </div>
-                
-                <canvas id="drawing-canvas"></canvas>
-                
-                <div id="qr-container" class="qr-container">
-                    <h3>Scan this QR code to join:</h3>
-                    <div id="qrcode"></div>
-                    <div class="connection-info">
-                        <p>Session ID: <span id="session-id-display"></span></p>
+                    <div class="tool-group">
+                        <button id="clear-btn" class="btn btn-outline">Clear Canvas</button>
                     </div>
                 </div>
                 
-                <div id="connect-container" class="connect-container" style="display:none;">
-                    <h3>Enter Session ID or Scan QR Code:</h3>
-                    <input type="text" id="session-id-input" placeholder="Session ID">
-                    <button id="scan-qr-btn">Scan QR Code</button>
-                    <button id="join-btn">Join Session</button>
-                    <div id="scanner-container">
-                        <video id="qr-video" autoplay playsinline></video>
+                <div class="canvas-wrapper">
+                    <canvas id="drawing-canvas"></canvas>
+                </div>
+                
+                <button class="toggle-sidebar" id="toggle-sidebar">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
+                    </svg>
+                </button>
+                
+                <div class="mobile-controls" id="mobile-controls">
+                    <input type="color" id="mobile-color-picker" value="#000000">
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <input type="range" id="mobile-brush-size" min="1" max="50" value="5">
+                        <span id="mobile-size-display">5px</span>
                     </div>
+                    <button id="mobile-clear-btn" class="btn btn-outline btn-sm">Clear</button>
                 </div>
             </div>
             
-            <div id="user-panel" class="user-panel" style="display:none;">
-                <h3>Connected Users</h3>
-                <ul id="user-list" class="user-list">
+            <div class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <h3>Connected Users</h3>
+                </div>
+                <ul class="user-list" id="user-list">
                     <!-- Users will be populated here -->
                 </ul>
+                <div class="session-controls" id="session-controls">
+                    <button id="host-btn" class="btn btn-primary desktop-only">Host Session</button>
+                    <button id="connect-btn" class="btn btn-secondary">Join Session</button>
+                    <button id="leave-btn" class="btn btn-outline" style="display:none;">Leave Session</button>
+                </div>
             </div>
         </div>
     </div>
-
-    <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Elements
-    const canvas = document.getElementById('drawing-canvas');
-    const ctx = canvas.getContext('2d');
-    const colorPicker = document.getElementById('color-picker');
-    const brushSize = document.getElementById('brush-size');
-    const sizeDisplay = document.getElementById('size-display');
-    const clearBtn = document.getElementById('clear-btn');
-    const hostBtn = document.getElementById('host-btn');
-    const connectBtn = document.getElementById('connect-btn');
-    const qrContainer = document.getElementById('qr-container');
-    const connectContainer = document.getElementById('connect-container');
-    const sessionIdDisplay = document.getElementById('session-id-display');
-    const sessionIdInput = document.getElementById('session-id-input');
-    const joinBtn = document.getElementById('join-btn');
-    const scanQrBtn = document.getElementById('scan-qr-btn');
-    const scannerContainer = document.getElementById('scanner-container');
-    const qrVideo = document.getElementById('qr-video');
-    const statusMessage = document.getElementById('status-message');
-    const userList = document.getElementById('user-list');
-    const userPanel = document.getElementById('user-panel');
-    const usernameContainer = document.getElementById('username-container');
-    const usernameInput = document.getElementById('username-input');
-    const usernameSubmit = document.getElementById('username-submit');
-    const notification = document.getElementById('notification');
-    
-    // Drawing variables
-    let isDrawing = false;
-    let isHost = false;
-    let isAdmin = false;
-    let isConnected = false;
-    let isDemo = false;
-    let drawingHistory = [];
-    let connections = [];
-    let users = [];
-    let peer = null;
-    let username = '';
-    let userColor = '';
-    let lastPoint = null; // Track last point for current user
-    let remoteLastPoints = {}; // Track last points for remote users
-    
-    // Generate a random color for the user
-    function generateRandomColor() {
-        const hue = Math.floor(Math.random() * 360);
-        return `hsl(${hue}, 70%, 50%)`;
-    }
-    
-    // Username setup
-    usernameSubmit.addEventListener('click', function() {
-        const name = usernameInput.value.trim();
-        if (name) {
-            username = name;
-            userColor = generateRandomColor();
-            usernameContainer.style.display = 'none';
-            initPeer();
-        } else {
-            alert('Please enter a valid name');
-        }
-    });
-    
-    // Set status message
-    function setStatus(message) {
-        statusMessage.textContent = message;
-    }
-    
-    // Show notification
-    function showNotification(message, duration = 5000) {
-        notification.textContent = message;
-        notification.style.display = 'block';
-        
-        setTimeout(() => {
-            notification.style.display = 'none';
-        }, duration);
-    }
-    
-    // Initialize PeerJS
-    function initPeer() {
-        setStatus('Connecting to PeerJS server...');
-        
-        // Create a new Peer with a random ID
-        peer = new Peer();
-        
-        peer.on('open', function(id) {
-            setStatus('Ready to connect');
-            hostBtn.disabled = false;
-            connectBtn.disabled = false;
-        });
-        
-        peer.on('error', function(err) {
-            console.error('PeerJS error:', err);
-            setStatus('Connection error: ' + err.type);
-            
-            if (err.type === 'disconnected' || err.type === 'network') {
-                showNotification('Connection lost! Please refresh the page to reconnect.');
-                resetSession();
-            }
-        });
-        
-        // Handle incoming connections
-        peer.on('connection', function(conn) {
-            handleConnection(conn);
-        });
-    }
-    
-    // Resize canvas to fit container
-    function resizeCanvas() {
-        const container = canvas.parentElement;
-        const displayWidth = canvas.offsetWidth;
-        const displayHeight = canvas.offsetHeight;
-        
-        // Set canvas rendering size to match display size
-        canvas.width = displayWidth;
-        canvas.height = displayHeight;
-        
-        // Set CSS size explicitly to match
-        canvas.style.width = displayWidth + 'px';
-        canvas.style.height = displayHeight + 'px';
-        
-        // Redraw existing content when resizing
-        redrawCanvas();
-    }
-    
-    // Initialize canvas
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
-    
-    // Update brush size display
-    brushSize.addEventListener('input', function() {
-        sizeDisplay.textContent = this.value;
-    });
-    
-    // Drawing functions
-    function startDrawing(e) {
-        if (isDemo) return; // Demo users can't draw
-        
-        isDrawing = true;
-        
-        // Reset last point to start a new line
-        lastPoint = getPointFromEvent(e);
-        
-        // Don't draw a point immediately, wait for draw to be called
-    }
-    
-    function stopDrawing() {
-        if (!isDrawing) return;
-        
-        isDrawing = false;
-        ctx.beginPath(); // End the current path
-        lastPoint = null; // Clear last point when done drawing
-        
-        // Send a path end marker
-        if (connections.length > 0) {
-            const endData = {
-                type: 'pathEnd',
-                peerId: peer.id
-            };
-            
-            connections.forEach(conn => {
-                conn.send(endData);
-            });
-        }
-    }
-    
-    function getPointFromEvent(e) {
-        const rect = canvas.getBoundingClientRect();
-        let x, y;
-        
-        if (e.type.includes('touch')) {
-            x = e.touches[0].clientX - rect.left;
-            y = e.touches[0].clientY - rect.top;
-        } else {
-            x = e.clientX - rect.left;
-            y = e.clientY - rect.top;
-        }
-        
-        // Account for any CSS scaling
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        
-        x *= scaleX;
-        y *= scaleY;
-        
-        // Constrain to canvas borders
-        x = Math.max(0, Math.min(x, canvas.width));
-        y = Math.max(0, Math.min(y, canvas.height));
-        
-        return { x, y };
-    }
-    
-    function draw(e) {
-        if (!isDrawing || isDemo) return;
-        
-        const current = getPointFromEvent(e);
-        
-        // Only draw if we have a last point
-        if (lastPoint) {
-            ctx.lineWidth = brushSize.value;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.strokeStyle = colorPicker.value;
-            
-            // Draw from the last point to the current point
-            ctx.beginPath();
-            ctx.moveTo(lastPoint.x, lastPoint.y);
-            ctx.lineTo(current.x, current.y);
-            ctx.stroke();
-            
-            // Send drawing data to all connected peers
-            const drawData = {
-                type: 'draw',
-                peerId: peer.id,
-                fromX: lastPoint.x / canvas.width,  // Store as percentages for cross-device compatibility
-                fromY: lastPoint.y / canvas.height,
-                toX: current.x / canvas.width,
-                toY: current.y / canvas.height,
-                color: colorPicker.value,
-                size: brushSize.value
-            };
-            
-            // Add to history
-            drawingHistory.push(drawData);
-            
-            // Send to all peers
-            if (connections.length > 0) {
-                connections.forEach(conn => {
-                    conn.send(drawData);
-                });
-            }
-        }
-        
-        // Update last point
-        lastPoint = current;
-    }
-    
-    function drawLineSegment(data) {
-        const fromX = data.fromX * canvas.width;
-        const fromY = data.fromY * canvas.height;
-        const toX = data.toX * canvas.width;
-        const toY = data.toY * canvas.height;
-        
-        ctx.lineWidth = data.size;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.strokeStyle = data.color;
-        
-        ctx.beginPath();
-        ctx.moveTo(fromX, fromY);
-        ctx.lineTo(toX, toY);
-        ctx.stroke();
-        
-        // Update the remote last point for this peer
-        remoteLastPoints[data.peerId] = { x: toX, y: toY };
-    }
-    
-    function redrawCanvas() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // Re-render all stored drawing data
-        drawingHistory.forEach(data => {
-            if (data.type === 'draw') {
-                drawLineSegment(data);
-            }
-        });
-    }
-    
-    // User management functions
-    function addUser(user) {
-        // Check if user already exists
-        const existingIndex = users.findIndex(u => u.peerId === user.peerId);
-        if (existingIndex !== -1) {
-            // Update existing user but preserve their role
-            const existingRole = users[existingIndex].role;
-            users[existingIndex] = {...user, role: user.role || existingRole};
-        } else {
-            // Add new user with default role if not specified
-            users.push({...user, role: user.role || 'user'});
-        }
-        updateUserList();
-    }
-    
-    function removeUser(peerId) {
-        const index = users.findIndex(u => u.peerId === peerId);
-        if (index !== -1) {
-            users.splice(index, 1);
-            updateUserList();
-        }
-        
-        // Also remove from remoteLastPoints
-        if (remoteLastPoints[peerId]) {
-            delete remoteLastPoints[peerId];
-        }
-    }
-    
-    function updateUserList() {
-        userList.innerHTML = '';
-        
-        users.forEach(user => {
-            const item = document.createElement('li');
-            item.className = 'user-item';
-            
-            const colorSpan = document.createElement('span');
-            colorSpan.className = 'user-color';
-            colorSpan.style.backgroundColor = user.color;
-            
-            const nameSpan = document.createElement('span');
-            nameSpan.className = 'user-name';
-            nameSpan.textContent = user.name;
-            
-            item.appendChild(colorSpan);
-            
-            // Add role badge if applicable
-            if (user.role && user.role !== 'user') {
-                const roleSpan = document.createElement('span');
-                roleSpan.className = `user-role role-${user.role.toLowerCase()}`;
-                roleSpan.textContent = user.role;
-                item.appendChild(roleSpan);
-            }
-            
-            item.appendChild(nameSpan);
-            
-            // Add management buttons with modified access controls
-            if ((isHost || isAdmin) && user.peerId !== peer.id) {
-                // Check if current user can manage this user
-                const canManage = isHost || (isAdmin && user.role !== 'host' && user.role !== 'admin');
-                
-                if (canManage) {
-                    const actionsDiv = document.createElement('div');
-                    actionsDiv.className = 'user-actions';
-                    
-                    // Only host can set admin privileges
-                    if (isHost) {
-                        const toggleAdminBtn = document.createElement('button');
-                        toggleAdminBtn.className = 'admin-btn';
-                        toggleAdminBtn.textContent = user.role === 'admin' ? 'Remove Admin' : 'Make Admin';
-                        toggleAdminBtn.addEventListener('click', () => toggleAdmin(user.peerId));
-                        actionsDiv.appendChild(toggleAdminBtn);
-                    }
-                    
-                    // Host and admins can toggle demo mode (but admins can't manage host or other admins)
-                    const toggleDemoBtn = document.createElement('button');
-                    toggleDemoBtn.className = 'demo-btn';
-                    toggleDemoBtn.textContent = user.role === 'demo' ? 'Allow Drawing' : 'Set to Demo';
-                    toggleDemoBtn.addEventListener('click', () => toggleDemo(user.peerId));
-                    actionsDiv.appendChild(toggleDemoBtn);
-                    
-                    // Host and admins can kick users (but admins can't kick host or other admins)
-                    const kickBtn = document.createElement('button');
-                    kickBtn.className = 'kick-btn';
-                    kickBtn.textContent = 'Kick';
-                    kickBtn.addEventListener('click', () => kickUser(user.peerId));
-                    actionsDiv.appendChild(kickBtn);
-                    
-                    item.appendChild(actionsDiv);
-                }
-            }
-            
-            userList.appendChild(item);
-        });
-    }
-    
-    function toggleAdmin(peerId) {
-        // Only host can toggle admin status
-        if (!isHost) return;
-        
-        const userIndex = users.findIndex(u => u.peerId === peerId);
-        if (userIndex !== -1) {
-            const isCurrentlyAdmin = users[userIndex].role === 'admin';
-            users[userIndex].role = isCurrentlyAdmin ? 'user' : 'admin';
-            
-            // Notify the affected user
-            const conn = connections.find(c => c.peer === peerId);
-            if (conn) {
-                conn.send({
-                    type: 'roleChange',
-                    role: users[userIndex].role,
-                    isAdmin: users[userIndex].role === 'admin'
-                });
-            }
-            
-            // Update all other users about this change
-            broadcastUserList();
-        }
-    }
-    
-    function toggleDemo(peerId) {
-        // Check if this user can be modified by the current user
-        const userToModify = users.find(u => u.peerId === peerId);
-        
-        // Cannot modify a host (admins can't modify host)
-        if (userToModify && userToModify.role === 'host') return;
-        
-        // Admins can't modify other admins
-        if (!isHost && isAdmin && userToModify && userToModify.role === 'admin') return;
-        
-        const userIndex = users.findIndex(u => u.peerId === peerId);
-        if (userIndex !== -1) {
-            const isCurrentlyDemo = users[userIndex].role === 'demo';
-            users[userIndex].role = isCurrentlyDemo ? 'user' : 'demo';
-            
-            // Notify the affected user
-            const conn = connections.find(c => c.peer === peerId);
-            if (conn) {
-                conn.send({
-                    type: 'roleChange',
-                    role: users[userIndex].role,
-                    isDemo: users[userIndex].role === 'demo'
-                });
-            }
-            
-            // Update all other users about this change
-            broadcastUserList();
-        }
-    }
-    
-    function kickUser(peerId) {
-        // Check if this user can be kicked by the current user
-        const userToKick = users.find(u => u.peerId === peerId);
-        
-        // Cannot kick a host (admins can't kick host)
-        if (userToKick && userToKick.role === 'host') return;
-        
-        // Admins can't kick other admins
-        if (!isHost && isAdmin && userToKick && userToKick.role === 'admin') return;
-        
-        const conn = connections.find(c => c.peer === peerId);
-        if (conn) {
-            conn.send({ type: 'kicked' });
-            conn.close();
-            removeUser(peerId);
-            
-            // Notify all users that someone was kicked
-            broadcastUserList();
-        }
-    }
-    
-    function broadcastUserList() {
-        if (connections.length > 0) {
-            connections.forEach(conn => {
-                conn.send({
-                    type: 'userList',
-                    users: users
-                });
-            });
-        }
-        updateUserList();
-    }
-    
-    // Clear canvas
-    clearBtn.addEventListener('click', function() {
-        if (isDemo) {
-            showNotification("You're in demo mode and cannot clear the canvas");
-            return;
-        }
-        
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawingHistory = [];
-        
-        // Send clear command to all peers
-        if (connections.length > 0) {
-            const clearData = { type: 'clear' };
-            connections.forEach(conn => {
-                conn.send(clearData);
-            });
-        }
-    });
-    
-    // Host session
-    hostBtn.addEventListener('click', function() {
-        isHost = true;
-        isAdmin = true;
-        isConnected = true;
-        
-        // Display session ID (peer ID)
-        const sessionId = peer.id;
-        sessionIdDisplay.textContent = sessionId;
-        
-        // Generate QR code
-        const qrcodeContainer = document.getElementById('qrcode');
-        qrcodeContainer.innerHTML = '';
-        
-        const qrcode = new QRCode(qrcodeContainer, {
-            text: sessionId,
-            width: 200,
-            height: 200
-        });
-        
-        qrContainer.style.display = 'flex';
-        connectContainer.style.display = 'none';
-        userPanel.style.display = 'flex';
-        
-        hostBtn.disabled = true;
-        connectBtn.disabled = true;
-        
-        // Add self to users list
-        addUser({
-            peerId: peer.id,
-            name: username,
-            color: userColor,
-            role: 'host'
-        });
-        
-        setStatus('Hosting session - waiting for connections');
-    });
-    
-    // Show connect interface
-    connectBtn.addEventListener('click', function() {
-        qrContainer.style.display = 'none';
-        connectContainer.style.display = 'flex';
-        
-        hostBtn.disabled = true;
-        connectBtn.disabled = false;
-    });
-    
-    // Join session
-    joinBtn.addEventListener('click', function() {
-        const sessionId = sessionIdInput.value.trim();
-        if (sessionId) {
-            connectToPeer(sessionId);
-        } else {
-            setStatus('Please enter a session ID');
-        }
-    });
-    
-    function connectToPeer(peerId) {
-        setStatus('Connecting to session...');
-        
-        const conn = peer.connect(peerId);
-        
-        conn.on('open', function() {
-            handleConnection(conn);
-            setStatus('Connected to session!');
-            connectContainer.style.display = 'none';
-            userPanel.style.display = 'flex';
-            isConnected = true;
-            
-            // Send user info to host
-            conn.send({
-                type: 'userInfo',
-                name: username,
-                color: userColor,
-                peerId: peer.id
-            });
-            
-            // Request current drawing state
-            conn.send({ type: 'requestHistory' });
-            
-            // Request user list
-            conn.send({ type: 'requestUsers' });
-            
-            // Add self to local users list
-            addUser({
-                peerId: peer.id,
-                name: username,
-                color: userColor,
-                role: 'user'
-            });
-        });
-        
-        conn.on('error', function(err) {
-            console.error('Connection error:', err);
-            setStatus('Failed to connect: ' + err);
-            showNotification('Failed to connect to session!');
-        });
-    }
-    
-    function handleConnection(conn) {
-        connections.push(conn);
-        
-        conn.on('data', function(data) {
-            if (data.type === 'draw') {
-                drawLineSegment(data);
-                
-                // Add to history if not already in there
-                if (!isInHistory(data)) {
-                    drawingHistory.push(data);
-                }
-                
-                // Relay to other connections if host
-                if (isHost) {
-                    connections.forEach(c => {
-                        if (c.peer !== conn.peer) {
-                            c.send(data);
-                        }
-                    });
-                }
-            } 
-            else if (data.type === 'pathEnd') {
-                // Reset the remote last point for this peer
-                if (remoteLastPoints[data.peerId]) {
-                    delete remoteLastPoints[data.peerId];
-                }
-                
-                // Relay path end to other peers if host
-                if (isHost) {
-                    connections.forEach(c => {
-                        if (c.peer !== conn.peer) {
-                            c.send(data);
-                        }
-                    });
-                }
-            }
-            else if (data.type === 'clear') {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                drawingHistory = [];
-                
-                // Clear all last points
-                remoteLastPoints = {};
-                
-                // Relay to other connections if host
-                if (isHost) {
-                    connections.forEach(c => {
-                        if (c.peer !== conn.peer) {
-                            c.send(data);
-                        }
-                    });
-                }
-            }
-            else if (data.type === 'requestHistory') {
-                // Send entire drawing history
-                conn.send({
-                    type: 'fullHistory',
-                    history: drawingHistory
-                });
-            }
-            else if (data.type === 'fullHistory') {
-                // Replace current history and redraw
-                drawingHistory = data.history;
-                redrawCanvas();
-            }
-            else if (data.type === 'userInfo') {
-                // Add user to list and relay to others if host
-                addUser({
-                    peerId: conn.peer,
-                    name: data.name,
-                    color: data.color
-                });
-                
-                if (isHost) {
-                    // Send back the current user list
-                    conn.send({
-                        type: 'userList',
-                        users: users
-                    });
-                    
-                    // Relay to others that a new user joined
-                    connections.forEach(c => {
-                        if (c.peer !== conn.peer) {
-                            c.send({
-                                type: 'userJoined',
-                                user: {
-                                    peerId: conn.peer,
-                                    name: data.name,
-                                    color: data.color
-                                }
-                            });
-                        }
-                    });
-                }
-            }
-            else if (data.type === 'userList') {
-                // Update user list with all users
-                users = data.users;
-                updateUserList();
-            }
-            else if (data.type === 'userJoined') {
-                // Add new user to list
-                addUser(data.user);
-            }
-            else if (data.type === 'userLeft') {
-                // Remove user from list
-                removeUser(data.peerId);
-            }
-            else if (data.type === 'requestUsers') {
-                // Send current user list
-                if (isHost) {
-                    conn.send({
-                        type: 'userList',
-                        users: users
-                    });
-                }
-            }
-            else if (data.type === 'kicked') {
-                // Disconnect if kicked
-                showNotification('You have been kicked from the session', 8000);
-                setStatus('You have been kicked from the session');
-                resetSession();
-            }
-            else if (data.type === 'roleChange') {
-                // Update local role status
-                if (data.isAdmin !== undefined) {
-                    isAdmin = data.isAdmin;
-                    showNotification(isAdmin ? 'You are now an admin' : 'Admin privileges removed');
-                }
-                
-                if (data.isDemo !== undefined) {
-                    isDemo = data.isDemo;
-                    showNotification(isDemo ? 'You are now in demo mode (view only)' : 'You can now draw on the canvas');
-                }
-                
-                // Update self in user list
-                const userIndex = users.findIndex(u => u.peerId === peer.id);
-                if (userIndex !== -1) {
-                    users[userIndex].role = data.role;
-                    updateUserList();
-                }
-            }
-        });
-        
-        conn.on('close', function() {
-            // Remove connection from list
-            const index = connections.findIndex(c => c.peer === conn.peer);
-            if (index !== -1) {
-                connections.splice(index, 1);
-            }
-            
-            // Remove user from list
-            removeUser(conn.peer);
-            
-            // Notify others if host
-            if (isHost) {
-                connections.forEach(c => {
-                    c.send({
-                        type: 'userLeft',
-                        peerId: conn.peer
-                    });
-                });
-            }
-            
-            // Show notification if we're not already disconnected
-            if (isConnected && connections.length === 0 && !isHost) {
-                showNotification('Disconnected from session', 5000);
-                resetSession();
-            }
-        });
-        
-        conn.on('error', function(err) {
-            console.error('Connection error:', err);
-            showNotification('Connection error occurred', 5000);
-        });
-    }
-    
-    function resetSession() {
-        connections.forEach(conn => conn.close());
-        connections = [];
-        users = [];
-        drawingHistory = [];
-        isHost = false;
-        isAdmin = false;
-        isConnected = false;
-        isDemo = false;
-        lastPoint = null;
-        remoteLastPoints = {};
-        
-        hostBtn.disabled = false;
-        connectBtn.disabled = false;
-        qrContainer.style.display = 'none';
-        connectContainer.style.display = 'none';
-        userPanel.style.display = 'none';
-        
-        redrawCanvas();
-        updateUserList();
-        setStatus('Disconnected - Ready to connect');
-    }
-    
-    function isInHistory(data) {
-        // Simple check to avoid duplicate entries
-        return drawingHistory.some(item => 
-            item.type === data.type && 
-            item.peerId === data.peerId &&
-            item.fromX === data.fromX && 
-            item.fromY === data.fromY && 
-            item.toX === data.toX && 
-            item.toY === data.toY && 
-            item.color === data.color && 
-            item.size === data.size
-        );
-    }
-    
-    // Setup event listeners for drawing
-    canvas.addEventListener('mousedown', startDrawing);
-    canvas.addEventListener('mousemove', draw);
-    canvas.addEventListener('mouseup', stopDrawing);
-    canvas.addEventListener('mouseleave', stopDrawing);
-    
-    // Touch events
-    canvas.addEventListener('touchstart', function(e) {
-        e.preventDefault();
-        startDrawing(e);
-    });
-    canvas.addEventListener('touchmove', function(e) {
-        e.preventDefault();
-        draw(e);
-    });
-    canvas.addEventListener('touchend', stopDrawing);
-    canvas.addEventListener('touchcancel', stopDrawing);
-    
-    // QR Code scanning
-    scanQrBtn.addEventListener('click', function() {
-        if (scannerContainer.style.display === 'none' || !scannerContainer.style.display) {
-            scannerContainer.style.display = 'block';
-            startQrScanner();
-        } else {
-            scannerContainer.style.display = 'none';
-            stopQrScanner();
-        }
-    });
-    
-    async function startQrScanner() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-            qrVideo.srcObject = stream;
-            
-            // Using this simple demo implementation
-            // In a production app, you would use proper QR code detection
-            setStatus('Camera active - point at QR code (demo mode)');
-            
-            // Since we can't actually decode QR codes in this demo,
-            // we'll simulate scanning by asking the user to input the ID manually
-            setTimeout(() => {
-                const manualInput = prompt("Demo mode: Please enter the session ID from the QR code manually:");
-                if (manualInput) {
-                    sessionIdInput.value = manualInput;
-                    stopQrScanner();
-                }
-            }, 3000);
-            
-        } catch (err) {
-            console.error('Error accessing camera:', err);
-            setStatus('Camera access denied or not available');
-            scannerContainer.style.display = 'none';
-        }
-    }
-    
-    function stopQrScanner() {
-        if (qrVideo.srcObject) {
-            qrVideo.srcObject.getTracks().forEach(track => track.stop());
-            qrVideo.srcObject = null;
-        }
-        scannerContainer.style.display = 'none';
-    }
-    
-    // Cleanup when leaving the page
-    window.addEventListener('beforeunload', function() {
-        if (peer) {
-            peer.destroy();
-        }
-        stopQrScanner();
-    });
-});
-    </script>
+    <script src="script.js"></script>
 </body>
 </html>
