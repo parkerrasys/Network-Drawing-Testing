@@ -49,6 +49,7 @@ let username = generateGuestName();
 let userRole = 'viewer';
 let users = [];
 let myUserId = null;
+let drawingHistory = []; // Store drawing operations for replay
 
 // Generate a random guest name
 function generateGuestName() {
@@ -82,14 +83,38 @@ function resizeCanvas() {
     canvas.width = container.clientWidth;
     canvas.height = container.clientHeight;
     
-    // Redraw canvas content if needed (could implement a storage/replay mechanism here)
+    // Redraw canvas content if needed
+    replayDrawingHistory();
+}
+
+// Replay drawing history on canvas
+function replayDrawingHistory() {
+    // Clear canvas first
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Replay all drawing operations
+    drawingHistory.forEach(op => {
+        if (op.type === 'draw') {
+            ctx.beginPath();
+            ctx.moveTo(op.from[0], op.from[1]);
+            ctx.lineTo(op.to[0], op.to[1]);
+            ctx.strokeStyle = op.color;
+            ctx.lineWidth = op.size;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+        } else if (op.type === 'clear') {
+            // If we encounter a clear operation, reset the canvas and start over
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawingHistory = drawingHistory.filter(item => item.timestamp > op.timestamp);
+        }
+    });
 }
 
 // Set up event listeners
 function setupEventListeners() {
     // Drawing events
     canvas.addEventListener('mousedown', startDrawing);
-    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mousemove', handleMouseMove);
     canvas.addEventListener('mouseup', stopDrawing);
     canvas.addEventListener('mouseout', stopDrawing);
     
@@ -163,6 +188,23 @@ function startDrawing(e) {
     [lastX, lastY] = getPointerPosition(e);
 }
 
+function handleMouseMove(e) {
+    const [x, y] = getPointerPosition(e);
+    
+    // Always send cursor position update, whether drawing or not
+    if (connections.length > 0) {
+        broadcastToPeers({
+            type: 'cursor',
+            position: [x, y]
+        });
+    }
+    
+    // If we're drawing, handle that separately
+    if (isDrawing) {
+        draw(e);
+    }
+}
+
 function draw(e) {
     if (!isDrawing) return;
     
@@ -178,24 +220,21 @@ function draw(e) {
     ctx.lineCap = 'round';
     ctx.stroke();
     
+    // Record the drawing operation in history
+    const drawOperation = {
+        type: 'draw',
+        from: [lastX, lastY],
+        to: [x, y],
+        color: currentColor,
+        size: currentSize,
+        timestamp: Date.now()
+    };
+    
+    drawingHistory.push(drawOperation);
+    
     // Send drawing data to peers
     if (connections.length > 0) {
-        const drawData = {
-            type: 'draw',
-            from: [lastX, lastY],
-            to: [x, y],
-            color: currentColor,
-            size: currentSize
-        };
-        broadcastToPeers(drawData);
-    }
-    
-    // Send cursor position update
-    if (connections.length > 0) {
-        broadcastToPeers({
-            type: 'cursor',
-            position: [x, y]
-        });
+        broadcastToPeers(drawOperation);
     }
     
     [lastX, lastY] = [x, y];
@@ -261,9 +300,18 @@ function updateSize(e) {
 function clearCanvas() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
+    // Record clear operation in history
+    const clearOperation = {
+        type: 'clear',
+        timestamp: Date.now()
+    };
+    
+    // Reset drawing history
+    drawingHistory = [clearOperation];
+    
     // Broadcast clear command to peers
     if (connections.length > 0) {
-        broadcastToPeers({ type: 'clear' });
+        broadcastToPeers(clearOperation);
     }
 }
 
@@ -364,6 +412,11 @@ function joinSession() {
             role: 'viewer'
         });
         
+        // Request canvas state
+        conn.send({
+            type: 'requestCanvasState'
+        });
+        
         // Show leave button
         connectBtn.style.display = 'none';
         hostBtn.style.display = 'none';
@@ -390,6 +443,7 @@ function leaveSession() {
     sessionId = null;
     isHost = false;
     users = [];
+    drawingHistory = [];
     
     // Clear the canvas
     clearCanvas();
@@ -470,11 +524,23 @@ function handleData(data, conn) {
             ctx.lineWidth = data.size;
             ctx.lineCap = 'round';
             ctx.stroke();
+            
+            // Add to drawing history
+            if (!data.timestamp) {
+                data.timestamp = Date.now();
+            }
+            drawingHistory.push(data);
             break;
             
         case 'clear':
             // Clear the canvas
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Reset drawing history
+            if (!data.timestamp) {
+                data.timestamp = Date.now();
+            }
+            drawingHistory = [data];
             break;
             
         case 'cursor':
@@ -496,8 +562,24 @@ function handleData(data, conn) {
                     type: 'users',
                     users: users
                 });
-                
-                // TODO: Send canvas state (this would require tracking drawing history)
+            }
+            break;
+            
+        case 'requestCanvasState':
+            // Send current canvas state to the new user if we're the host
+            if (isHost) {
+                sendToPeer(conn.peer, {
+                    type: 'canvasState',
+                    history: drawingHistory
+                });
+            }
+            break;
+            
+        case 'canvasState':
+            // Receive canvas state from host
+            if (data.history && data.history.length > 0) {
+                drawingHistory = data.history;
+                replayDrawingHistory();
             }
             break;
             
@@ -596,16 +678,19 @@ function addUser(id, name, color, role) {
     // Check if user already exists
     const existingUser = users.find(u => u.id === id);
     if (existingUser) {
-        return;
+        // Update existing user with latest data
+        existingUser.name = name;
+        existingUser.color = color;
+        existingUser.role = role;
+    } else {
+        // Add user
+        users.push({
+            id,
+            name,
+            color,
+            role
+        });
     }
-    
-    // Add user
-    users.push({
-        id,
-        name,
-        color,
-        role
-    });
     
     updateUserList();
 }
@@ -752,10 +837,17 @@ function updateCursor(userId, position, metadata) {
         cursor = document.createElement('div');
         cursor.id = `cursor-${userId}`;
         cursor.className = 'cursor';
-        cursor.dataset.name = metadata.name;
+        
+        // Create name label for cursor
+        const nameLabel = document.createElement('div');
+        nameLabel.className = 'cursor-name';
+        nameLabel.textContent = metadata.name;
+        cursor.appendChild(nameLabel);
+        
         canvas.parentElement.appendChild(cursor);
     }
     
+    // Always use the color from metadata
     cursor.style.backgroundColor = metadata.color;
     cursor.style.left = `${position[0]}px`;
     cursor.style.top = `${position[1]}px`;
@@ -808,6 +900,8 @@ function startQRScanner() {
             qrVideo.srcObject = stream;
             qrVideo.setAttribute('playsinline', true);
             qrVideo.play();
+            
+            // Set up QR code scanning using jsQR library
             scanQRCode();
         })
         .catch(function(err) {
@@ -825,11 +919,54 @@ function stopQRScanner() {
     }
 }
 
-// Scan QR code from video stream
+// Scan QR code from video stream using jsQR library
 function scanQRCode() {
-    // This is a placeholder. In a real implementation, you would use a QR code scanning library
-    // For now, we'll just show a message
-    showNotification('QR scanning would happen here in a real implementation');
+    const videoElement = qrVideo;
+    const canvasElement = document.createElement('canvas');
+    const canvas = canvasElement.getContext('2d');
+    
+    // Use requestAnimationFrame for smooth scanning
+    function scan() {
+        if (videoElement.readyState === videoElement.HAVE_ENOUGH_DATA) {
+            canvasElement.height = videoElement.videoHeight;
+            canvasElement.width = videoElement.videoWidth;
+            canvas.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
+            
+            const imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
+            
+            // jsQR is expected to be loaded as a separate library
+            try {
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: "dontInvert",
+                });
+                
+                if (code) {
+                    // Found a QR code
+                    const scannedData = code.data;
+                    console.log("QR code detected:", scannedData);
+                    
+                    // Set the session ID input and stop scanning
+                    sessionIdInput.value = scannedData;
+                    stopQRScanner();
+                    scannerContainer.style.display = 'none';
+                    showNotification('QR code detected: ' + scannedData);
+                    
+                    // Automatically join session
+                    joinSession();
+                    return;
+                }
+            } catch (e) {
+                console.error("jsQR error:", e);
+            }
+        }
+        
+        // Continue scanning if container is still visible
+        if (scannerContainer.style.display !== 'none') {
+            requestAnimationFrame(scan);
+        }
+    }
+    
+    requestAnimationFrame(scan);
 }
 
 // Show notification
