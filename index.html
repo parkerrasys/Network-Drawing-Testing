@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Network Drawing Testing</title>
+    <title>Collaborative Drawing App</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.4/html5-qrcode.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -48,12 +49,15 @@
             display: block;
             margin: 10px 0;
             cursor: crosshair;
+            touch-action: none;
+            background-color: white;
         }
         .tools {
             margin: 10px 0;
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
+            align-items: center;
         }
         .color-picker {
             width: 40px;
@@ -71,9 +75,14 @@
             border: none;
             border-radius: 4px;
             cursor: pointer;
+            transition: background-color 0.3s;
         }
         .tool-btn:hover {
             background-color: #45a049;
+        }
+        .tool-btn:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
         }
         .qr-container {
             display: flex;
@@ -98,10 +107,21 @@
         .hidden {
             display: none;
         }
+        #reader {
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        .scanner-toggle {
+            margin: 10px 0;
+        }
         @media (max-width: 768px) {
             canvas {
                 width: 100%;
                 height: auto;
+            }
+            .tools {
+                justify-content: center;
             }
         }
     </style>
@@ -120,6 +140,8 @@
                 <input type="color" id="pc-color-picker" class="color-picker" value="#000000">
                 <label for="pc-size-slider">Brush Size:</label>
                 <input type="range" id="pc-size-slider" class="size-slider" min="1" max="20" value="5">
+                <button id="pc-undo-btn" class="tool-btn" disabled>Undo</button>
+                <button id="pc-redo-btn" class="tool-btn" disabled>Redo</button>
                 <button id="pc-clear-btn" class="tool-btn">Clear Canvas</button>
             </div>
             
@@ -139,15 +161,24 @@
                 <input type="color" id="mobile-color-picker" class="color-picker" value="#000000">
                 <label for="mobile-size-slider">Brush Size:</label>
                 <input type="range" id="mobile-size-slider" class="size-slider" min="1" max="20" value="5">
+                <button id="mobile-undo-btn" class="tool-btn" disabled>Undo</button>
+                <button id="mobile-redo-btn" class="tool-btn" disabled>Redo</button>
                 <button id="mobile-clear-btn" class="tool-btn">Clear Canvas</button>
             </div>
             
             <canvas id="mobile-canvas" width="800" height="500"></canvas>
             
             <div id="scanner-container">
-                <h3>Scan QR Code from PC</h3>
-                <input type="text" id="session-input" placeholder="Or enter session ID manually">
-                <button id="connect-btn" class="tool-btn">Connect</button>
+                <h3>Connect to PC</h3>
+                <div class="scanner-toggle">
+                    <button id="scan-qr-btn" class="tool-btn">Scan QR Code</button>
+                </div>
+                <div id="reader" class="hidden"></div>
+                <div>
+                    <p>Or enter session ID manually:</p>
+                    <input type="text" id="session-input" placeholder="Enter session ID">
+                    <button id="connect-btn" class="tool-btn">Connect</button>
+                </div>
             </div>
             
             <div id="mobile-status" class="status">Not connected</div>
@@ -157,7 +188,7 @@
     <script>
         // Utility functions
         function generateSessionId() {
-            return Math.random().toString(36).substring(2, 10);
+            return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
         }
         
         function switchTab(tabName) {
@@ -173,16 +204,24 @@
         
         // Drawing functionality
         class DrawingApp {
-            constructor(canvasId, colorPickerId, sizeId, clearBtnId) {
+            constructor(canvasId, colorPickerId, sizeId, clearBtnId, undoBtnId, redoBtnId) {
                 this.canvas = document.getElementById(canvasId);
                 this.ctx = this.canvas.getContext('2d');
                 this.colorPicker = document.getElementById(colorPickerId);
                 this.sizeSlider = document.getElementById(sizeId);
                 this.clearBtn = document.getElementById(clearBtnId);
+                this.undoBtn = document.getElementById(undoBtnId);
+                this.redoBtn = document.getElementById(redoBtnId);
                 
                 this.isDrawing = false;
                 this.lastX = 0;
                 this.lastY = 0;
+                
+                // For undo/redo functionality
+                this.history = [];
+                this.redoStack = [];
+                this.currentPath = [];
+                this.saveSnapshot();
                 
                 this.setupEventListeners();
                 this.initCanvas();
@@ -199,42 +238,113 @@
                 // Mouse events
                 this.canvas.addEventListener('mousedown', this.startDrawing.bind(this));
                 this.canvas.addEventListener('mousemove', this.draw.bind(this));
-                this.canvas.addEventListener('mouseup', this.stopDrawing.bind(this));
-                this.canvas.addEventListener('mouseout', this.stopDrawing.bind(this));
+                this.canvas.addEventListener('mouseup', this.finishDrawing.bind(this));
+                this.canvas.addEventListener('mouseout', this.finishDrawing.bind(this));
                 
                 // Touch events
                 this.canvas.addEventListener('touchstart', this.handleTouch.bind(this));
                 this.canvas.addEventListener('touchmove', this.handleTouch.bind(this));
-                this.canvas.addEventListener('touchend', () => this.isDrawing = false);
+                this.canvas.addEventListener('touchend', this.finishTouchDrawing.bind(this));
                 
                 // Button events
                 this.clearBtn.addEventListener('click', this.clearCanvas.bind(this));
+                this.undoBtn.addEventListener('click', this.undo.bind(this));
+                this.redoBtn.addEventListener('click', this.redo.bind(this));
+            }
+            
+            saveSnapshot() {
+                this.history.push(this.canvas.toDataURL());
+                this.redoStack = [];
+                this.updateUndoRedoButtons();
+            }
+            
+            updateUndoRedoButtons() {
+                this.undoBtn.disabled = this.history.length <= 1;
+                this.redoBtn.disabled = this.redoStack.length === 0;
+            }
+            
+            undo() {
+                if (this.history.length > 1) {
+                    this.redoStack.push(this.history.pop());
+                    const imgData = this.history[this.history.length - 1];
+                    this.loadImageData(imgData, false);
+                    this.updateUndoRedoButtons();
+                    
+                    if (this.onUndo) {
+                        this.onUndo(imgData);
+                    }
+                }
+            }
+            
+            redo() {
+                if (this.redoStack.length > 0) {
+                    const imgData = this.redoStack.pop();
+                    this.history.push(imgData);
+                    this.loadImageData(imgData, false);
+                    this.updateUndoRedoButtons();
+                    
+                    if (this.onRedo) {
+                        this.onRedo(imgData);
+                    }
+                }
             }
             
             startDrawing(e) {
                 this.isDrawing = true;
-                [this.lastX, this.lastY] = [e.offsetX, e.offsetY];
+                const rect = this.canvas.getBoundingClientRect();
+                const scaleX = this.canvas.width / rect.width;
+                const scaleY = this.canvas.height / rect.height;
+                
+                this.lastX = (e.clientX - rect.left) * scaleX;
+                this.lastY = (e.clientY - rect.top) * scaleY;
+                
+                this.currentPath = [];
+                this.currentPath.push({
+                    x: this.lastX,
+                    y: this.lastY,
+                    color: this.colorPicker.value,
+                    size: this.sizeSlider.value,
+                    type: 'start'
+                });
             }
             
             draw(e) {
                 if (!this.isDrawing) return;
+                
+                const rect = this.canvas.getBoundingClientRect();
+                const scaleX = this.canvas.width / rect.width;
+                const scaleY = this.canvas.height / rect.height;
+                
+                const currentX = (e.clientX - rect.left) * scaleX;
+                const currentY = (e.clientY - rect.top) * scaleY;
                 
                 this.ctx.strokeStyle = this.colorPicker.value;
                 this.ctx.lineWidth = this.sizeSlider.value;
                 
                 this.ctx.beginPath();
                 this.ctx.moveTo(this.lastX, this.lastY);
-                this.ctx.lineTo(e.offsetX, e.offsetY);
+                this.ctx.lineTo(currentX, currentY);
                 this.ctx.stroke();
                 
-                [this.lastX, this.lastY] = [e.offsetX, e.offsetY];
+                this.currentPath.push({
+                    x1: this.lastX,
+                    y1: this.lastY,
+                    x2: currentX,
+                    y2: currentY,
+                    color: this.colorPicker.value,
+                    size: this.sizeSlider.value,
+                    type: 'line'
+                });
+                
+                this.lastX = currentX;
+                this.lastY = currentY;
                 
                 if (this.onDraw) {
                     this.onDraw({
                         x1: this.lastX,
                         y1: this.lastY,
-                        x2: e.offsetX,
-                        y2: e.offsetY,
+                        x2: currentX,
+                        y2: currentY,
                         color: this.colorPicker.value,
                         size: this.sizeSlider.value
                     });
@@ -245,12 +355,26 @@
                 e.preventDefault();
                 const touch = e.touches[0];
                 const rect = this.canvas.getBoundingClientRect();
-                const offsetX = touch.clientX - rect.left;
-                const offsetY = touch.clientY - rect.top;
+                const scaleX = this.canvas.width / rect.width;
+                const scaleY = this.canvas.height / rect.height;
+                
+                const offsetX = (touch.clientX - rect.left) * scaleX;
+                const offsetY = (touch.clientY - rect.top) * scaleY;
                 
                 if (e.type === 'touchstart') {
                     this.isDrawing = true;
-                    [this.lastX, this.lastY] = [offsetX, offsetY];
+                    this.lastX = offsetX;
+                    this.lastY = offsetY;
+                    
+                    this.currentPath = [];
+                    this.currentPath.push({
+                        x: this.lastX,
+                        y: this.lastY,
+                        color: this.colorPicker.value,
+                        size: this.sizeSlider.value,
+                        type: 'start'
+                    });
+                    
                 } else if (e.type === 'touchmove' && this.isDrawing) {
                     this.ctx.strokeStyle = this.colorPicker.value;
                     this.ctx.lineWidth = this.sizeSlider.value;
@@ -259,6 +383,16 @@
                     this.ctx.moveTo(this.lastX, this.lastY);
                     this.ctx.lineTo(offsetX, offsetY);
                     this.ctx.stroke();
+                    
+                    this.currentPath.push({
+                        x1: this.lastX,
+                        y1: this.lastY,
+                        x2: offsetX,
+                        y2: offsetY,
+                        color: this.colorPicker.value,
+                        size: this.sizeSlider.value,
+                        type: 'line'
+                    });
                     
                     if (this.onDraw) {
                         this.onDraw({
@@ -271,17 +405,30 @@
                         });
                     }
                     
-                    [this.lastX, this.lastY] = [offsetX, offsetY];
+                    this.lastX = offsetX;
+                    this.lastY = offsetY;
                 }
             }
             
-            stopDrawing() {
-                this.isDrawing = false;
+            finishDrawing() {
+                if (this.isDrawing) {
+                    this.isDrawing = false;
+                    this.saveSnapshot();
+                    
+                    if (this.onStrokeEnd && this.currentPath.length > 0) {
+                        this.onStrokeEnd(this.currentPath);
+                    }
+                }
+            }
+            
+            finishTouchDrawing() {
+                this.finishDrawing();
             }
             
             clearCanvas() {
                 this.ctx.fillStyle = '#ffffff';
                 this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                this.saveSnapshot();
                 
                 if (this.onClear) {
                     this.onClear();
@@ -302,107 +449,313 @@
                 return this.canvas.toDataURL('image/png');
             }
             
-            loadImageData(dataUrl) {
+            loadImageData(dataUrl, saveToHistory = true) {
                 const img = new Image();
                 img.onload = () => {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
                     this.ctx.drawImage(img, 0, 0);
+                    
+                    if (saveToHistory) {
+                        this.saveSnapshot();
+                    }
                 };
                 img.src = dataUrl;
+            }
+            
+            // Process a batch of drawing instructions
+            processBatch(instructions) {
+                instructions.forEach(instruction => {
+                    if (instruction.type === 'line') {
+                        this.drawLine(instruction);
+                    }
+                });
+                this.saveSnapshot();
             }
         }
         
         // Initialize apps
-        const pcApp = new DrawingApp('pc-canvas', 'pc-color-picker', 'pc-size-slider', 'pc-clear-btn');
-        const mobileApp = new DrawingApp('mobile-canvas', 'mobile-color-picker', 'mobile-size-slider', 'mobile-clear-btn');
+        const pcApp = new DrawingApp('pc-canvas', 'pc-color-picker', 'pc-size-slider', 'pc-clear-btn', 'pc-undo-btn', 'pc-redo-btn');
+        const mobileApp = new DrawingApp('mobile-canvas', 'mobile-color-picker', 'mobile-size-slider', 'mobile-clear-btn', 'mobile-undo-btn', 'mobile-redo-btn');
         
         // Session management
         const sessionId = generateSessionId();
         document.getElementById('session-id').textContent = sessionId;
         
-        // QR Code generation (simulation)
-        const qrcode = new QRCode(document.getElementById("qrcode"), {
-            text: `${window.location.href}?session=${sessionId}`,
-            width: 128,
-            height: 128,
+        // QR Code generation with simpler format
+        const qrCode = new QRCode(document.getElementById("qrcode"), {
+            text: sessionId,
+            width: 200,
+            height: 200,
             colorDark: "#000000",
             colorLight: "#ffffff",
-            correctLevel: QRCode.CorrectLevel.H
+            correctLevel: QRCode.CorrectLevel.L  // L is lowest complexity = easier to scan
         });
         
-        // Simulate socket connection
-        let isConnected = false;
+        // Initialize the QR code scanner
+        let html5QrScanner;
+        
+        document.getElementById('scan-qr-btn').addEventListener('click', function() {
+            const readerDiv = document.getElementById('reader');
+            readerDiv.classList.toggle('hidden');
+            
+            if (!readerDiv.classList.contains('hidden')) {
+                html5QrScanner = new Html5Qrcode("reader");
+                html5QrScanner.start(
+                    { facingMode: "environment" },
+                    { fps: 10, qrbox: 250 },
+                    (decodedText) => {
+                        document.getElementById('session-input').value = decodedText;
+                        html5QrScanner.stop();
+                        readerDiv.classList.add('hidden');
+                        initializeConnection(decodedText);
+                    },
+                    (errorMessage) => {
+                        // Handle QR code scan error
+                    }
+                ).catch((err) => {
+                    alert("Camera access is required to scan the QR code");
+                });
+            } else if (html5QrScanner) {
+                html5QrScanner.stop();
+            }
+        });
+        
+        // Connection functionality
+        let peerConnection = null;
         const pcStatus = document.getElementById('pc-status');
         const mobileStatus = document.getElementById('mobile-status');
         
         // Connect button functionality
         document.getElementById('connect-btn').addEventListener('click', () => {
-            const enteredId = document.getElementById('session-input').value || sessionId;
-            simulateConnection(enteredId);
+            const enteredId = document.getElementById('session-input').value.trim();
+            if (enteredId) {
+                initializeConnection(enteredId);
+            } else {
+                mobileStatus.textContent = "Please enter a session ID";
+                mobileStatus.className = "status disconnected";
+            }
         });
         
-        function simulateConnection(id) {
-            if (id === sessionId) {
-                isConnected = true;
+        // Data transfer channel
+        let dataChannel = null;
+        
+        // WebRTC connection setup
+        function initializeConnection(targetSessionId) {
+            // Only make connection if target session matches our generated one
+            if (targetSessionId === sessionId) {
+                setupPeerConnection();
+                mobileStatus.textContent = "Connection established!";
+                mobileStatus.className = "status connected";
                 pcStatus.textContent = "Mobile connected!";
                 pcStatus.className = "status connected";
-                mobileStatus.textContent = "Connected to PC!";
-                mobileStatus.className = "status connected";
                 
-                // Share current canvas state
-                mobileApp.loadImageData(pcApp.getImageData());
+                // Share the current PC canvas with mobile
+                const imageData = pcApp.getImageData();
+                mobileApp.loadImageData(imageData);
                 
-                // Set up synchronization
+                // Setup synchronized drawing
                 setupSync();
             } else {
-                mobileStatus.textContent = "Invalid session ID";
+                mobileStatus.textContent = "Invalid session ID, please try again";
                 mobileStatus.className = "status disconnected";
             }
         }
         
-        function setupSync() {
-            pcApp.onDraw = (data) => {
-                if (isConnected) {
-                    mobileApp.drawLine(data);
+        function setupPeerConnection() {
+            // In a real application, this would use WebRTC for peer connection
+            // For this demo, we'll simulate the connection directly since both devices
+            // are actually running in the same browser context
+            peerConnection = {
+                connected: true,
+                send: function(data) {
+                    // Process message immediately as we're in the same context
+                    handleMessage(data);
                 }
             };
             
-            mobileApp.onDraw = (data) => {
-                if (isConnected) {
-                    pcApp.drawLine(data);
+            // Listen for window/tab closure to simulate disconnection
+            window.addEventListener('beforeunload', function() {
+                if (peerConnection && peerConnection.connected) {
+                    disconnectApps();
+                }
+            });
+        }
+        
+        function handleMessage(data) {
+            const message = JSON.parse(data);
+            
+            switch(message.type) {
+                case 'draw':
+                    if (message.source === 'pc') {
+                        mobileApp.drawLine(message.data);
+                    } else {
+                        pcApp.drawLine(message.data);
+                    }
+                    break;
+                case 'clear':
+                    if (message.source === 'pc') {
+                        mobileApp.clearCanvas();
+                    } else {
+                        pcApp.clearCanvas();
+                    }
+                    break;
+                case 'stroke':
+                    if (message.source === 'pc') {
+                        mobileApp.processBatch(message.data);
+                    } else {
+                        pcApp.processBatch(message.data);
+                    }
+                    break;
+                case 'full-image':
+                    if (message.source === 'pc') {
+                        mobileApp.loadImageData(message.data);
+                    } else {
+                        pcApp.loadImageData(message.data);
+                    }
+                    break;
+                case 'ping':
+                    // Respond to keep-alive pings
+                    break;
+            }
+        }
+        
+        function setupSync() {
+            // Set up PC app event handlers
+            pcApp.onDraw = (data) => {
+                if (peerConnection && peerConnection.connected) {
+                    peerConnection.send(JSON.stringify({
+                        type: 'draw',
+                        source: 'pc',
+                        data: data
+                    }));
                 }
             };
             
             pcApp.onClear = () => {
-                if (isConnected) {
-                    mobileApp.clearCanvas();
+                if (peerConnection && peerConnection.connected) {
+                    peerConnection.send(JSON.stringify({
+                        type: 'clear',
+                        source: 'pc'
+                    }));
+                }
+            };
+            
+            pcApp.onStrokeEnd = (pathData) => {
+                if (peerConnection && peerConnection.connected) {
+                    peerConnection.send(JSON.stringify({
+                        type: 'stroke',
+                        source: 'pc',
+                        data: pathData
+                    }));
+                }
+            };
+            
+            pcApp.onUndo = (imgData) => {
+                if (peerConnection && peerConnection.connected) {
+                    peerConnection.send(JSON.stringify({
+                        type: 'full-image',
+                        source: 'pc',
+                        data: imgData
+                    }));
+                }
+            };
+            
+            pcApp.onRedo = pcApp.onUndo;
+            
+            // Set up mobile app event handlers
+            mobileApp.onDraw = (data) => {
+                if (peerConnection && peerConnection.connected) {
+                    peerConnection.send(JSON.stringify({
+                        type: 'draw',
+                        source: 'mobile',
+                        data: data
+                    }));
                 }
             };
             
             mobileApp.onClear = () => {
-                if (isConnected) {
-                    pcApp.clearCanvas();
+                if (peerConnection && peerConnection.connected) {
+                    peerConnection.send(JSON.stringify({
+                        type: 'clear',
+                        source: 'mobile'
+                    }));
                 }
             };
             
-            // Simulate random disconnection after some time
+            mobileApp.onStrokeEnd = (pathData) => {
+                if (peerConnection && peerConnection.connected) {
+                    peerConnection.send(JSON.stringify({
+                        type: 'stroke',
+                        source: 'mobile',
+                        data: pathData
+                    }));
+                }
+            };
+            
+            mobileApp.onUndo = (imgData) => {
+                if (peerConnection && peerConnection.connected) {
+                    peerConnection.send(JSON.stringify({
+                        type: 'full-image',
+                        source: 'mobile',
+                        data: imgData
+                    }));
+                }
+            };
+            
+            mobileApp.onRedo = mobileApp.onUndo;
+            
+            // Simulate connection health check
+            startConnectionHealthCheck();
+        }
+        
+        function startConnectionHealthCheck() {
+            const healthCheckInterval = setInterval(() => {
+                if (peerConnection && peerConnection.connected) {
+                    try {
+                        peerConnection.send(JSON.stringify({
+                            type: 'ping',
+                            timestamp: Date.now()
+                        }));
+                    } catch (e) {
+                        disconnectApps();
+                        clearInterval(healthCheckInterval);
+                    }
+                } else {
+                    clearInterval(healthCheckInterval);
+                }
+            }, 5000);
+            
+            // For demo: randomly simulate connection loss after some time (1-3 minutes)
             setTimeout(() => {
-                if (Math.random() > 0.5) {
+                if (Math.random() > 0.7) {
                     disconnectApps();
                 }
-            }, 60000 + Math.random() * 60000);
+            }, 60000 + Math.random() * 120000);
         }
         
         function disconnectApps() {
-            isConnected = false;
-            pcStatus.textContent = "Connection lost!";
-            pcStatus.className = "status disconnected";
-            mobileStatus.textContent = "Connection lost!";
-            mobileStatus.className = "status disconnected";
-            
-            pcApp.onDraw = null;
-            pcApp.onClear = null;
-            mobileApp.onDraw = null;
-            mobileApp.onClear = null;
+            if (peerConnection) {
+                peerConnection.connected = false;
+                peerConnection = null;
+                
+                pcStatus.textContent = "Connection lost!";
+                pcStatus.className = "status disconnected";
+                mobileStatus.textContent = "Connection lost!";
+                mobileStatus.className = "status disconnected";
+                
+                // Remove event handlers
+                pcApp.onDraw = null;
+                pcApp.onClear = null;
+                pcApp.onStrokeEnd = null;
+                pcApp.onUndo = null;
+                pcApp.onRedo = null;
+                
+                mobileApp.onDraw = null;
+                mobileApp.onClear = null;
+                mobileApp.onStrokeEnd = null;
+                mobileApp.onUndo = null;
+                mobileApp.onRedo = null;
+            }
         }
         
         // Check URL for session parameter (for mobile connection)
@@ -413,6 +766,11 @@
             if (urlSession) {
                 switchTab('mobile');
                 document.getElementById('session-input').value = urlSession;
+                
+                // Auto-connect if session ID is in URL
+                setTimeout(() => {
+                    initializeConnection(urlSession);
+                }, 500);
             }
         });
     </script>
